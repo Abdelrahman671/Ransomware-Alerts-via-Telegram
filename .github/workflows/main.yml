@@ -1,0 +1,32 @@
+name: Ransomware Alerts Notification
+
+on:
+  schedule:
+    # This will trigger the action to run every hour
+    - cron: '0 * * * *'  # Runs at minute 0 of every hour
+  workflow_dispatch:  # Allows you to manually trigger the workflow
+
+jobs:
+  send_ransomware_alerts:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Set up Python 3.8
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.8'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests
+
+    - name: Run the ransomware alerts script
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: |
+        python your_script_name.py
