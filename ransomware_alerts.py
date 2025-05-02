@@ -8,9 +8,6 @@ from datetime import datetime, timedelta
 bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
 chat_id = os.getenv("TELEGRAM_CHAT_ID")
 
-# Path to the local cache file to store alerted victims
-cache_file = "victim_cache.json"
-
 def send_telegram_notification(message):
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     payload = {
@@ -42,19 +39,6 @@ ME_COUNTRIES = {
     "IL": "Israel"
 }
 
-def load_victim_cache():
-    """Load previously alerted victims from the cache file."""
-    try:
-        with open(cache_file, "r") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return {}
-
-def save_victim_cache(cache):
-    """Save the updated list of alerted victims to the cache file."""
-    with open(cache_file, "w") as f:
-        json.dump(cache, f)
-
 def get_victim_data(country_code):
     url = f"https://api.ransomware.live/v2/countryvictims/{country_code}"
     headers = {"Accept": "application/json"}
@@ -64,7 +48,7 @@ def get_victim_data(country_code):
 
 def filter_recent_victims(data):
     now = datetime.utcnow()
-    cutoff = now - timedelta(days=7)
+    cutoff = now - timedelta(days=1)
     entries = []
 
     if isinstance(data, list):
@@ -88,7 +72,7 @@ def filter_recent_victims(data):
     return recent
 
 def build_message(country_name, victims):
-    msg = f"\U0001F4E2 *New Ransomware Victims in {country_name}*\n*Total:* {len(victims)}\n\n"
+    msg = f"📢 *Ransomware Victims in {country_name} (Last 1 Days)*\n*Total:* {len(victims)}\n\n"
     for v in victims:
         company    = v.get("post_title", "Unknown")
         activity   = v.get("activity", "—")
@@ -131,36 +115,19 @@ def build_message(country_name, victims):
     return msg
 
 def main():
-    victim_cache = load_victim_cache()
-
     for code, country in ME_COUNTRIES.items():
         try:
             data = get_victim_data(code)
             recent_victims = filter_recent_victims(data)
             if not recent_victims:
-                print(f"[{country}] No new victims.")
+                print(f"[{country}] No victims found.")
                 continue
-
-            new_victims = []
-            for victim in recent_victims:
-                victim_id = victim.get("id")
-                if victim_id not in victim_cache.get(country, []):
-                    new_victims.append(victim)
-                    if country not in victim_cache:
-                        victim_cache[country] = []
-                    victim_cache[country].append(victim_id)
-
-            if new_victims:
-                message = build_message(country, new_victims)
-                status = send_telegram_notification(message)
-                print(f"[{country}] Telegram message sent! Status code: {status}")
-            else:
-                print(f"[{country}] No new victims.")
-            
-            save_victim_cache(victim_cache)
-
+            message = build_message(country, recent_victims)
+            status = send_telegram_notification(message)
+            print(f"[{country}] Telegram message sent! Status code: {status}")
         except Exception as e:
             print(f"[{country}] ERROR: {e}")
 
 if __name__ == "__main__":
     main()
+
