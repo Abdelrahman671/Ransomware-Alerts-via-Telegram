@@ -3,7 +3,7 @@ name: Ransomware Alerts Notification
 on:
   schedule:
     # This will trigger the action to run every hour
-    - cron: '0 * * * *'  # Runs at minute 0 of every hour
+    - cron: '0 */3 * * *'  # Runs at minute 0 of every 3 hours
   workflow_dispatch:  # Allows you to manually trigger the workflow
 
 jobs:
