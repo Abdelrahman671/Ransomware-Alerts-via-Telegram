@@ -2,11 +2,14 @@ import requests
 import sys
 import json
 import os
-from datetime import datetime, timedelta
+import time
+from datetime import datetime, timedelta, UTC
 
 # Telegram bot token and chat ID
+
 bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
 chat_id = os.getenv("TELEGRAM_CHAT_ID")
+
 
 def send_telegram_notification(message):
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
@@ -33,42 +36,56 @@ ME_COUNTRIES = {
     "PS": "Palestine",
     "QA": "Qatar",
     "SY": "Syria",
-    "YE": "Yemen",
+    "YEM": "Yemen",
     "BH": "Bahrain",
     "TR": "Turkey",
     "IL": "Israel"
 }
 
-def get_victim_data(country_code):
+def get_victim_data(country_code, max_retries=3):
     url = f"https://api.ransomware.live/v2/countryvictims/{country_code}"
     headers = {"Accept": "application/json"}
-    resp = requests.get(url, headers=headers)
-    resp.raise_for_status()
-    return resp.json()
+
+    for attempt in range(max_retries):
+        resp = requests.get(url, headers=headers)
+
+        if resp.status_code == 429:
+            retry_after = int(resp.headers.get("Retry-After", 60))
+            print(f"[{country_code}] Rate limited. Waiting {retry_after}s "
+                  f"({attempt + 1}/{max_retries})")
+            time.sleep(retry_after)
+            continue
+
+        resp.raise_for_status()
+        return resp.json()
+
+    print(f"[{country_code}] Skipping after {max_retries} rate-limit retries.")
+    return None
+
+from datetime import datetime, timedelta, UTC
 
 def filter_recent_victims(data):
-    now = datetime.utcnow()
-    cutoff = now - timedelta(days=1)
-    entries = []
-
-    if isinstance(data, list):
-        for item in data:
-            if isinstance(item, list):
-                entries.extend(item)
-            elif isinstance(item, dict):
-                entries.append(item)
-    elif isinstance(data, dict):
-        entries = [data]
+    now = datetime.now(UTC)
+    cutoff = now - timedelta(days=1)  # last day
 
     recent = []
-    for v in entries:
-        ds = v.get("discovered", "")[:19]
-        try:
-            d = datetime.strptime(ds, "%Y-%m-%d %H:%M:%S")
-        except ValueError:
+
+    for victim in data:
+        ds = victim.get("discovered")
+
+        if not ds:
             continue
+
+        try:
+            # Handles:
+            # 2026-06-17T18:24:19.153580+00:00
+            d = datetime.fromisoformat(ds)
+        except Exception:
+            continue
+
         if d >= cutoff:
-            recent.append(v)
+            recent.append(victim)
+
     return recent
 
 def build_message(country_name, victims):
@@ -114,20 +131,79 @@ def build_message(country_name, victims):
         msg = msg[:3990] + "\n…(truncated)"
     return msg
 
-def main():
+
+# old
+
+""""def main():
     for code, country in ME_COUNTRIES.items():
+
+        time.sleep(2)
+
         try:
             data = get_victim_data(code)
+
+            if data is None:
+                continue
+
             recent_victims = filter_recent_victims(data)
             if not recent_victims:
                 print(f"[{country}] No victims found.")
                 continue
             message = build_message(country, recent_victims)
+
+            print(f"API returned: {len(data)}")
+            print(f"After filtering: {len(recent_victims)}")
+
             status = send_telegram_notification(message)
             print(f"[{country}] Telegram message sent! Status code: {status}")
         except Exception as e:
+            print(f"[{country}] ERROR: {e}")"""
+
+
+# new tests
+
+def main():
+    for code, country in ME_COUNTRIES.items():
+        try:
+            data = get_victim_data(code)
+
+            if not data:
+                print(f"[{country}] API returned no data.")
+                continue
+
+            recent_victims = filter_recent_victims(data)
+
+            print(f"[{country}] API returned {len(data)} victims, "
+                  f"{len(recent_victims)} in the last 30 days.")
+
+            if not recent_victims:
+                continue
+
+            message = build_message(country, recent_victims)
+
+            status = send_telegram_notification(message)
+
+            print(f"[{country}] Telegram sent successfully ({status}).")
+
+        except Exception as e:
             print(f"[{country}] ERROR: {e}")
+
+        # Optional: be nice to the API
+        time.sleep(2)
+
+# test for a country only
+
+"""def main():
+    data = get_victim_data("EG")   # or EG, TR, etc.
+
+    print(type(data))
+
+    if isinstance(data, list):
+        print(f"Items returned: {len(data)}")
+        if data:
+            print(json.dumps(data[0], indent=2))
+    else:
+        print(json.dumps(data, indent=2))"""
 
 if __name__ == "__main__":
     main()
-
