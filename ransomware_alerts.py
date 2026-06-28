@@ -3,7 +3,7 @@ import sys
 import json
 import os
 import time
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, timedelta, timezone
 
 # Telegram bot token and chat ID
 
@@ -65,7 +65,7 @@ def get_victim_data(country_code, max_retries=3):
 from datetime import datetime, timedelta, UTC
 
 def filter_recent_victims(data):
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     cutoff = now - timedelta(days=1)  # last day
 
     recent = []
